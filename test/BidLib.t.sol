@@ -42,7 +42,7 @@ contract BidLibTest is Test {
         assertEq(newMaxBidder.bidder, address(0xCCC));
         assertEq(newMaxPrice, 20);
 
-        assertEq(heap.size(), 2); 
+        assertEq(heap.size(), 2);
     }
 
     function testRemoveAtIndex() public {
@@ -67,7 +67,7 @@ contract BidLibTest is Test {
         heap.insert(BidLib.Bidder(address(0x888), 88), 20);
         heap.insert(BidLib.Bidder(address(0x777), 77), 30);
 
-        uint idx = heap.getBidIndexByAddressAndNonce(address(0x888), 88);
+        uint256 idx = heap.getBidIndexByAddressAndNonce(address(0x888), 88);
         assertGt(idx, 0, "error");
 
         BidLib.Bid memory b = heap.getBidAtIndex(idx);
@@ -85,7 +85,7 @@ contract BidLibTest is Test {
 
         BidLib.Bid[] memory allBids = heap.getHeap();
         assertEq(allBids.length, 2);
-        assertEq(allBids[0].price, 200); 
+        assertEq(allBids[0].price, 200);
         assertEq(allBids[1].price, 100);
     }
 
@@ -128,7 +128,7 @@ contract BidLibTest is Test {
     }
 
     /**
-     * @notice (address, nonce)가 완전히 동일한 경우를 삽입 -> 
+     * @notice (address, nonce)가 완전히 동일한 경우를 삽입 ->
      *         라이브러리 자체는 막지 않으므로 중복이 가능. 상위 컨트랙트 단에서 로직 제어 필요.
      *         여기서는 단지 중복 삽입 후 사이즈와 getMax()가 정상 동작하는지만 확인
      */

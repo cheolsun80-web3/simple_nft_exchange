@@ -46,7 +46,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
     uint256 public expiration;
     mapping(IERC721 => BidLib.Heap) internal bids;
     mapping(IERC721 => uint256) public bidsOffset;
-    
+
     mapping(IERC721 => Ask[]) public asks;
     mapping(IERC721 => uint256) public asksOffset;
 
@@ -61,11 +61,13 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         Success,
         Cancel
     }
+
     struct BidInfo {
         IERC721 nft;
         uint256 nonce;
         BidState state;
     }
+
     mapping(address => BidInfo[]) public bidInfos;
 
     struct AskInfo {
@@ -74,6 +76,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         uint256 price;
         uint256 bn;
     }
+
     mapping(address => AskInfo[]) public askInfos;
 
     uint256 public feeBalance;
@@ -163,7 +166,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         }
     }
 
-    function _cleanup_ask_deep(IERC721 nft, uint limit) internal {
+    function _cleanup_ask_deep(IERC721 nft, uint256 limit) internal {
         Ask[] storage _asks = asks[nft];
         uint256 _offset = asksOffset[nft];
         for (uint256 i = _offset; i < _asks.length; i++) {
@@ -173,7 +176,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
             }
             tokenLocks[nft][_asks[i].idx] = false;
         }
-        
+
         _offset = asksOffset[nft];
         for (uint256 i = _offset; i < _asks.length; i++) {
             if (i - _offset > limit) {
@@ -200,18 +203,26 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
     function cleanup_ask_deep(IERC721 nft) public {
         _cleanup_ask_deep(nft, MAX_ASKS);
     }
-    function cleanup_ask_deep_limit(IERC721 nft, uint limit) public {
+
+    function cleanup_ask_deep_limit(IERC721 nft, uint256 limit) public {
         _cleanup_ask_deep(nft, limit);
     }
 
-    function addAsk(IERC721 nft, uint256 tokenId, uint256 price) public whenNotPaused onlyWhitelisted(nft) onlyEOA nonReentrant {
+    function addAsk(IERC721 nft, uint256 tokenId, uint256 price)
+        public
+        whenNotPaused
+        onlyWhitelisted(nft)
+        onlyEOA
+        nonReentrant
+    {
         _cleanup_ask(nft);
 
         if (tokenLocks[nft][tokenId]) {
             Ask[] storage _asks = asks[nft];
-            for (uint i = asksOffset[nft]; i < _asks.length; i++) {
+            for (uint256 i = asksOffset[nft]; i < _asks.length; i++) {
                 if (_asks[i].idx == tokenId) {
-                    if (_asks[i].seller != msg.sender) { // when token owner changes
+                    if (_asks[i].seller != msg.sender) {
+                        // when token owner changes
                         emit AskRemoved(nft, _asks[i].idx, _asks[i].seller, _asks[i].price);
                         tokenLocks[nft][tokenId] = false;
                         _asks[i].seller = address(0);
@@ -228,22 +239,17 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
 
         // check owner
         require(nft.ownerOf(tokenId) == msg.sender, "Not owner");
-        
+
         // check max asks
         require((asks[nft].length - asksOffset[nft]) < MAX_ASKS, "Too many asks");
 
         tokenLocks[nft][tokenId] = true;
-        
+
         // check price
         require(price > 1 ether, "Price too low");
         require((price % 1 ether) == 0, "Price not multiple of 1 ether");
 
-        asks[nft].push(Ask({
-            seller: msg.sender,
-            price: price,
-            idx: tokenId,
-            expiration: block.timestamp + expiration
-        }));
+        asks[nft].push(Ask({seller: msg.sender, price: price, idx: tokenId, expiration: block.timestamp + expiration}));
 
         emit AskAdded(nft, tokenId, msg.sender, price, block.timestamp + expiration);
     }
@@ -275,7 +281,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
 
     function acceptAsk(IERC721 nft, uint256 tokenId, uint256 price) public payable {
         require(msg.value == price, "Value mismatch");
-        uint balance = WETH.balanceOf(address(this));
+        uint256 balance = WETH.balanceOf(address(this));
         WETH.deposit{value: price}();
         require(WETH.balanceOf(address(this)) == balance + price, "Deposit failed");
         _acceptAsk(nft, tokenId, price, true);
@@ -285,7 +291,13 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         _acceptAsk(nft, tokenId, maxPrice, false);
     }
 
-    function _acceptAsk(IERC721 nft, uint256 tokenId, uint256 maxPrice, bool isPayable) internal whenNotPaused onlyWhitelisted(nft) onlyEOA nonReentrant {
+    function _acceptAsk(IERC721 nft, uint256 tokenId, uint256 maxPrice, bool isPayable)
+        internal
+        whenNotPaused
+        onlyWhitelisted(nft)
+        onlyEOA
+        nonReentrant
+    {
         _cleanup_ask(nft);
         uint256 idx;
         for (idx = asksOffset[nft]; idx < asks[nft].length; idx++) {
@@ -308,25 +320,20 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         // transfer WETH
 
         if (!isPayable) {
-            uint balance = WETH.balanceOf(address(this));
+            uint256 balance = WETH.balanceOf(address(this));
             WETH.transferFrom(msg.sender, address(this), ask.price);
             require(WETH.balanceOf(address(this)) == balance + ask.price, "Transfer failed");
         }
 
-        uint price = ask.price;
-        uint feeAmount = price * fee / FEE_DENOMINATOR;
-        
+        uint256 price = ask.price;
+        uint256 feeAmount = price * fee / FEE_DENOMINATOR;
+
         feeBalance += feeAmount;
         WETH.transfer(ask.seller, price - feeAmount);
 
         emit Trade(nft, tokenId, ask.seller, msg.sender, price);
 
-        askInfos[ask.seller].push(AskInfo({
-            nft: nft,
-            idx: tokenId,
-            price: price,
-            bn: block.number
-        }));
+        askInfos[ask.seller].push(AskInfo({nft: nft, idx: tokenId, price: price, bn: block.number}));
     }
 
     function addBidWETH(IERC721 nft, uint256 price) public {
@@ -335,13 +342,19 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
 
     function addBid(IERC721 nft, uint256 price) public payable {
         require(msg.value == price, "Value mismatch");
-        uint balance = WETH.balanceOf(address(this));
+        uint256 balance = WETH.balanceOf(address(this));
         WETH.deposit{value: price}();
         require(WETH.balanceOf(address(this)) == balance + price, "Deposit failed");
         _addBid(nft, price, true);
     }
 
-    function _addBid(IERC721 nft, uint256 price, bool isPayable) internal whenNotPaused onlyWhitelisted(nft) onlyEOA nonReentrant {
+    function _addBid(IERC721 nft, uint256 price, bool isPayable)
+        internal
+        whenNotPaused
+        onlyWhitelisted(nft)
+        onlyEOA
+        nonReentrant
+    {
         require(price > 1 ether, "Price too low");
         require((price % 1 ether) == 0, "Price not multiple of 1 ether");
 
@@ -349,7 +362,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         (, uint256 topPrice) = bids[nft].getMax();
         require(price > topPrice, "Price too low");
 
-        uint _nonce = nonces[msg.sender]++;
+        uint256 _nonce = nonces[msg.sender]++;
 
         if (!isPayable) {
             // transfer WETH
@@ -363,16 +376,12 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         _bids.insert(BidLib.Bidder(msg.sender, _nonce), price);
         emit BidAdded(nft, _nonce, msg.sender, price, block.timestamp + expiration);
 
-        bidInfos[msg.sender].push(BidInfo({
-            nft: nft,
-            nonce: _nonce,
-            state: BidState.Bid
-        }));
+        bidInfos[msg.sender].push(BidInfo({nft: nft, nonce: _nonce, state: BidState.Bid}));
     }
 
     function removeBidWETH(IERC721 nft, uint256 nonce) public whenNotPaused onlyWhitelisted(nft) onlyEOA nonReentrant {
         BidLib.Heap storage _bids = bids[nft];
-        uint idx = _bids.getBidIndexByAddressAndNonce(msg.sender, nonce);
+        uint256 idx = _bids.getBidIndexByAddressAndNonce(msg.sender, nonce);
         require(idx != 0, "Bid not found");
 
         (BidLib.Bid memory bid) = _bids.getBidAtIndex(idx);
@@ -382,20 +391,20 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         _bids.removeAtIndex(idx);
         emit BidRemoved(nft, nonce, msg.sender, bid.price);
 
-        for (uint i = 0; i < bidInfos[msg.sender].length; i++) {
+        for (uint256 i = 0; i < bidInfos[msg.sender].length; i++) {
             if (bidInfos[msg.sender][i].nft == nft && bidInfos[msg.sender][i].nonce == nonce) {
                 bidInfos[msg.sender][i].state = BidState.Cancel;
                 break;
             }
         }
-        
+
         // refund WETH
         WETH.transfer(msg.sender, bid.price);
     }
 
     function removeBid(IERC721 nft, uint256 nonce) public whenNotPaused onlyWhitelisted(nft) onlyEOA nonReentrant {
         BidLib.Heap storage _bids = bids[nft];
-        uint idx = _bids.getBidIndexByAddressAndNonce(msg.sender, nonce);
+        uint256 idx = _bids.getBidIndexByAddressAndNonce(msg.sender, nonce);
         require(idx != 0, "Bid not found");
 
         (BidLib.Bid memory bid) = _bids.getBidAtIndex(idx);
@@ -405,7 +414,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         _bids.removeAtIndex(idx);
         emit BidRemoved(nft, nonce, msg.sender, bid.price);
 
-        for (uint i = 0; i < bidInfos[msg.sender].length; i++) {
+        for (uint256 i = 0; i < bidInfos[msg.sender].length; i++) {
             if (bidInfos[msg.sender][i].nft == nft && bidInfos[msg.sender][i].nonce == nonce) {
                 bidInfos[msg.sender][i].state = BidState.Cancel;
                 break;
@@ -415,11 +424,17 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         // refund WETH
         WETH.withdraw(bid.price);
         require(address(this).balance == bid.price, "Withdraw failed");
-        (bool success,) = msg.sender.call{value: bid.price, gas: 3333}('');
+        (bool success,) = msg.sender.call{value: bid.price, gas: 3333}("");
         require(success, "Withdraw failed");
     }
 
-    function acceptBid(IERC721 nft, uint256 tokenId, uint256 minPrice) public whenNotPaused onlyWhitelisted(nft) onlyEOA nonReentrant {
+    function acceptBid(IERC721 nft, uint256 tokenId, uint256 minPrice)
+        public
+        whenNotPaused
+        onlyWhitelisted(nft)
+        onlyEOA
+        nonReentrant
+    {
         _cleanup_ask(nft);
         // check owner and approval
         require(nft.ownerOf(tokenId) == msg.sender, "Not owner");
@@ -438,14 +453,13 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         // transfer NFT
         nft.safeTransferFrom(msg.sender, bidder.bidder, tokenId);
 
-
-        uint feeAmount = price * fee / FEE_DENOMINATOR;
+        uint256 feeAmount = price * fee / FEE_DENOMINATOR;
         feeBalance += feeAmount;
 
         // transfer WETH
         WETH.withdraw(price - feeAmount);
         require(address(this).balance == price - feeAmount, "Withdraw failed");
-        (bool success,) = msg.sender.call{value: price - feeAmount, gas: 3333}('');
+        (bool success,) = msg.sender.call{value: price - feeAmount, gas: 3333}("");
         require(success, "Withdraw failed");
 
         emit BidRemoved(nft, bidder.nonce, bidder.bidder, price);
@@ -469,7 +483,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
     }
 
     function withdrawFee() public onlyOwner {
-        uint amount = feeBalance;
+        uint256 amount = feeBalance;
         feeBalance = 0;
         WETH.transfer(msg.sender, amount);
     }

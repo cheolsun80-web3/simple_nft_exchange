@@ -37,7 +37,7 @@ library BidLib {
     /**
      * @dev 힙 크기 반환 (더미 제외)
      */
-    function size(Heap storage self) internal view returns (uint) {
+    function size(Heap storage self) internal view returns (uint256) {
         if (self.data.length <= 1) {
             return 0;
         }
@@ -49,12 +49,12 @@ library BidLib {
      *      0번 인덱스는 더미이므로 제외
      */
     function getHeap(Heap storage self) internal view returns (Bid[] memory) {
-        uint length = self.data.length;
+        uint256 length = self.data.length;
         if (length <= 1) {
             return new Bid[](0);
         }
         Bid[] memory result = new Bid[](length - 1);
-        for (uint i = 1; i < length; i++) {
+        for (uint256 i = 1; i < length; i++) {
             result[i - 1] = self.data[i];
         }
         return result;
@@ -63,11 +63,7 @@ library BidLib {
     /**
      * @dev 새 Bid 삽입 (Max Heap 유지)
      */
-    function insert(
-        Heap storage self,
-        Bidder memory _bidder,
-        uint256 _price
-    ) internal {
+    function insert(Heap storage self, Bidder memory _bidder, uint256 _price) internal {
         if (self.data.length == 0) {
             init(self);
         }
@@ -90,7 +86,7 @@ library BidLib {
      * @dev 루트(최댓값) 추출 (삭제 O(log n))
      */
     function extractMax(Heap storage self) internal returns (Bidder memory, uint256) {
-        uint length = self.data.length;
+        uint256 length = self.data.length;
         if (length <= 1) {
             return (Bidder(address(0), 0), 0);
         }
@@ -111,8 +107,8 @@ library BidLib {
      * @dev 특정 인덱스(i) 위치의 원소를 제거 (O(log n))
      *      i가 1~size() 범위 내여야 함 (0번 인덱스는 dummy)
      */
-    function removeAtIndex(Heap storage self, uint i) internal {
-        uint length = self.data.length;
+    function removeAtIndex(Heap storage self, uint256 i) internal {
+        uint256 length = self.data.length;
         require(length > 1, "Heap is empty");
         require(i > 0 && i < length, "Invalid index");
 
@@ -125,7 +121,7 @@ library BidLib {
             self.data.pop();
 
             // bubbleUp 또는 bubbleDown 판단
-            uint parentIndex = i / 2;
+            uint256 parentIndex = i / 2;
             // i가 루트가 아니고, 부모보다 현재 노드 price가 더 크면 bubbleUp
             if (i > 1 && self.data[i].price > self.data[parentIndex].price) {
                 bubbleUp(self, i);
@@ -136,13 +132,17 @@ library BidLib {
         }
     }
 
-    function getBidAtIndex(Heap storage self, uint i) internal view returns (Bid memory) {
+    function getBidAtIndex(Heap storage self, uint256 i) internal view returns (Bid memory) {
         require(i > 0 && i < self.data.length, "Invalid index");
         return self.data[i];
     }
 
-    function getBidIndexByAddressAndNonce(Heap storage self, address bidder, uint256 nonce) internal view returns (uint) {
-        for (uint i = 1; i < self.data.length; i++) {
+    function getBidIndexByAddressAndNonce(Heap storage self, address bidder, uint256 nonce)
+        internal
+        view
+        returns (uint256)
+    {
+        for (uint256 i = 1; i < self.data.length; i++) {
             if (self.data[i].bidder.bidder == bidder && self.data[i].bidder.nonce == nonce) {
                 return i;
             }
@@ -153,9 +153,9 @@ library BidLib {
     /**
      * @dev bubbleUp: index 위치에서 부모와 비교해가며 올라가는 과정
      */
-    function bubbleUp(Heap storage self, uint index) private {
+    function bubbleUp(Heap storage self, uint256 index) private {
         while (index > 1) {
-            uint parentIndex = index / 2;
+            uint256 parentIndex = index / 2;
             if (self.data[parentIndex].price < self.data[index].price) {
                 // swap
                 Bid memory temp = self.data[parentIndex];
@@ -172,12 +172,12 @@ library BidLib {
     /**
      * @dev bubbleDown: index 위치에서 자식들과 비교해가며 내려가는 과정
      */
-    function bubbleDown(Heap storage self, uint index) private {
-        uint length = self.data.length;
+    function bubbleDown(Heap storage self, uint256 index) private {
+        uint256 length = self.data.length;
         while (true) {
-            uint leftChild = index * 2;
-            uint rightChild = index * 2 + 1;
-            uint largest = index;
+            uint256 leftChild = index * 2;
+            uint256 rightChild = index * 2 + 1;
+            uint256 largest = index;
 
             if (leftChild < length && self.data[leftChild].price > self.data[largest].price) {
                 largest = leftChild;

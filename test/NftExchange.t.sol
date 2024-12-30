@@ -108,7 +108,7 @@ contract NftExchangeTest is Test {
         (address sellerBefore, uint256 priceBefore,,) = nftExchange.asks(nftA, 0);
         assertEq(sellerBefore, userA, "Seller should be userA before removal");
         assertEq(priceBefore, 50 ether, "Price should be 50 ether before removal");
-        
+
         /// Remove the ask
         nftExchange.removeAsk(nftA, 2);
 
