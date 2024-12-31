@@ -253,7 +253,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         tokenLocks[nft][tokenId] = true;
 
         // check price
-        require(price > 1 ether, "Price too low");
+        require(price >= 1 ether, "Price too low");
         require((price % 1 ether) == 0, "Price not multiple of 1 ether");
 
         asks[nft].push(Ask({seller: msg.sender, price: price, idx: tokenId, expiration: block.timestamp + expiration}));
@@ -365,7 +365,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         onlyEOA
         nonReentrant
     {
-        require(price > 1 ether, "Price too low");
+        require(price >= 1 ether, "Price too low");
         require((price % 1 ether) == 0, "Price not multiple of 1 ether");
 
         // get top bid
