@@ -50,6 +50,16 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
     mapping(IERC721 => Ask[]) public asks;
     mapping(IERC721 => uint256) public asksOffset;
 
+    struct TradeInfo {
+        uint256 tokenId;
+        address seller;
+        address buyer;
+        uint256 price;
+        uint256 bn;
+    }
+
+    mapping(IERC721 => TradeInfo[]) public tradeHistory;
+
     mapping(address => uint256) public nonces;
     mapping(address => uint256) public balances;
 
@@ -120,8 +130,6 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
 
     function addNft(IERC721 nft) public onlyOwner {
         require(!whitelist[nft], "NFT already whitelisted");
-        // check NFT Interface
-        require(nft.supportsInterface(type(IERC721).interfaceId), "NFT does not support IERC721");
         whitelist[nft] = true;
         nfts.push(nft);
 
@@ -148,9 +156,8 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
     }
 
     modifier onlyEOA() {
-        // require(!Address.isContract(msg.sender), "Only EOA");
-        // require(msg.sender == tx.origin, "Only EOA - 1");
-        require(address(msg.sender).code.length == 0, "Only EOA - 2");
+        require(msg.sender == tx.origin, "EOA1");
+        require(address(msg.sender).code.length == 0, "EOA2");
         _;
     }
 
@@ -334,6 +341,9 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         emit Trade(nft, tokenId, ask.seller, msg.sender, price);
 
         askInfos[ask.seller].push(AskInfo({nft: nft, idx: tokenId, price: price, bn: block.number}));
+        tradeHistory[nft].push(
+            TradeInfo({tokenId: tokenId, seller: ask.seller, buyer: msg.sender, price: price, bn: block.number})
+        );
     }
 
     function addBidWETH(IERC721 nft, uint256 price) public {
@@ -379,27 +389,55 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         bidInfos[msg.sender].push(BidInfo({nft: nft, nonce: _nonce, state: BidState.Bid}));
     }
 
-    function removeBidWETH(IERC721 nft, uint256 nonce) public whenNotPaused onlyWhitelisted(nft) onlyEOA nonReentrant {
+    // function removeBidWETH(IERC721 nft, uint256 nonce) public whenNotPaused onlyWhitelisted(nft) onlyEOA nonReentrant {
+    //     BidLib.Heap storage _bids = bids[nft];
+    //     uint256 idx = _bids.getBidIndexByAddressAndNonce(msg.sender, nonce);
+    //     require(idx != 0, "Bid not found");
+
+    //     (BidLib.Bid memory bid) = _bids.getBidAtIndex(idx);
+    //     require(bid.bidder.bidder == msg.sender, "Not bidder");
+    //     require(bid.bidder.nonce == nonce, "Nonce mismatch");
+
+    //     _bids.removeAtIndex(idx);
+    //     emit BidRemoved(nft, nonce, msg.sender, bid.price);
+
+    //     for (uint256 i = 0; i < bidInfos[msg.sender].length; i++) {
+    //         if (bidInfos[msg.sender][i].nft == nft && bidInfos[msg.sender][i].nonce == nonce) {
+    //             bidInfos[msg.sender][i].state = BidState.Cancel;
+    //             break;
+    //         }
+    //     }
+
+    //     // refund WETH
+    //     WETH.transfer(msg.sender, bid.price);
+    // }
+
+    function removeBidByOwner(IERC721 nft) public onlyWhitelisted(nft) nonReentrant {
         BidLib.Heap storage _bids = bids[nft];
-        uint256 idx = _bids.getBidIndexByAddressAndNonce(msg.sender, nonce);
-        require(idx != 0, "Bid not found");
+        // get top bid
+        (BidLib.Bidder memory bidder, uint256 price) = _bids.extractMax();
+        require(price > 0, "No bid");
 
-        (BidLib.Bid memory bid) = _bids.getBidAtIndex(idx);
-        require(bid.bidder.bidder == msg.sender, "Not bidder");
-        require(bid.bidder.nonce == nonce, "Nonce mismatch");
+        // transfer WETH
+        WETH.withdraw(price);
+        (bool success,) = bidder.bidder.call{value: price, gas: 3333}("");
+        require(success, "Withdraw failed");
+    }
 
-        _bids.removeAtIndex(idx);
-        emit BidRemoved(nft, nonce, msg.sender, bid.price);
-
-        for (uint256 i = 0; i < bidInfos[msg.sender].length; i++) {
-            if (bidInfos[msg.sender][i].nft == nft && bidInfos[msg.sender][i].nonce == nonce) {
-                bidInfos[msg.sender][i].state = BidState.Cancel;
+    function removeBidByOwnerN(IERC721 nft, uint256 count) public onlyWhitelisted(nft) nonReentrant {
+        BidLib.Heap storage _bids = bids[nft];
+        for (uint256 i = 0; i < count; i++) {
+            // get top bid
+            (BidLib.Bidder memory bidder, uint256 price) = _bids.extractMax();
+            if (price == 0) {
                 break;
             }
-        }
 
-        // refund WETH
-        WETH.transfer(msg.sender, bid.price);
+            // transfer WETH
+            WETH.withdraw(price);
+            (bool success,) = bidder.bidder.call{value: price, gas: 3333}("");
+            require(success, "Withdraw failed");
+        }
     }
 
     function removeBid(IERC721 nft, uint256 nonce) public whenNotPaused onlyWhitelisted(nft) onlyEOA nonReentrant {
@@ -422,8 +460,9 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         }
 
         // refund WETH
+        uint256 balance = address(this).balance;
         WETH.withdraw(bid.price);
-        require(address(this).balance == bid.price, "Withdraw failed");
+        require(address(this).balance == balance + bid.price, "Withdraw failed");
         (bool success,) = msg.sender.call{value: bid.price, gas: 3333}("");
         require(success, "Withdraw failed");
     }
@@ -464,14 +503,15 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
 
         emit BidRemoved(nft, bidder.nonce, bidder.bidder, price);
         emit Trade(nft, tokenId, msg.sender, bidder.bidder, price);
+
+        askInfos[msg.sender].push(AskInfo({nft: nft, idx: tokenId, price: price, bn: block.number}));
+        tradeHistory[nft].push(
+            TradeInfo({tokenId: tokenId, seller: msg.sender, buyer: bidder.bidder, price: price, bn: block.number})
+        );
     }
 
     function getBids(IERC721 nft) public view returns (BidLib.Bid[] memory) {
         return bids[nft].getHeap();
-    }
-
-    function getAsks(IERC721 nft) public view returns (Ask[] memory) {
-        return asks[nft];
     }
 
     function getBidInfos(address bidder) public view returns (BidInfo[] memory) {
@@ -501,10 +541,30 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
     }
 
     function getActiveAsks(IERC721 nft) public view returns (Ask[] memory) {
-        Ask[] memory _asks = new Ask[](asks[nft].length - asksOffset[nft]);
+        if (asks[nft].length == 0) {
+            return new Ask[](0);
+        }
+        if (asksOffset[nft] == asks[nft].length) {
+            return new Ask[](0);
+        }
+        uint256 count = 0;
+        for (uint256 i = asksOffset[nft]; i < asks[nft].length; i++) {
+            if (asks[nft][i].expiration > block.timestamp) {
+                if (asks[nft][i].seller == address(0)) {
+                    continue;
+                }
+                count++;
+            }
+        }
+        Ask[] memory _asks = new Ask[](count);
         uint256 j = 0;
         for (uint256 i = asksOffset[nft]; i < asks[nft].length; i++) {
-            _asks[j++] = asks[nft][i];
+            if (asks[nft][i].expiration > block.timestamp) {
+                if (asks[nft][i].seller == address(0)) {
+                    continue;
+                }
+                _asks[j++] = asks[nft][i];
+            }
         }
         return _asks;
     }
@@ -514,12 +574,27 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         return BidLib.Bid(bidder, price);
     }
 
-    function getTopBidPrice(IERC721 nft) public view returns (uint256) {
-        (, uint256 price) = bids[nft].getMax();
-        return price;
-    }
-
     function getAsksByIndex(IERC721 nft, uint256 idx) public view returns (Ask memory) {
         return asks[nft][asksOffset[nft] + idx];
+    }
+
+    function getTradeHistorySize(IERC721 nft) public view returns (uint256) {
+        return tradeHistory[nft].length;
+    }
+
+    function getTradeHistoryByIndex(IERC721 nft, uint256 idx) public view returns (TradeInfo memory) {
+        return tradeHistory[nft][idx];
+    }
+
+    function getTradeHistoryLast(IERC721 nft, uint256 count) public view returns (TradeInfo[] memory) {
+        if (count > tradeHistory[nft].length) {
+            count = tradeHistory[nft].length;
+        }
+        uint256 start = tradeHistory[nft].length - count;
+        TradeInfo[] memory _tradeHistory = new TradeInfo[](count);
+        for (uint256 i = start; i < tradeHistory[nft].length; i++) {
+            _tradeHistory[i - start] = tradeHistory[nft][i];
+        }
+        return _tradeHistory;
     }
 }
