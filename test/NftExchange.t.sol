@@ -81,7 +81,7 @@ contract NftExchangeTest is Test {
         nftA.mint(userA, 1);
 
         /// Approve the NftExchange to transfer userA’s token
-        vm.startPrank(userA);
+        vm.startPrank(userA, userA);
         nftA.approve(address(nftExchange), 1);
 
         /// Add ask for 100 ether
@@ -100,7 +100,7 @@ contract NftExchangeTest is Test {
     function testRemoveAsk() public {
         /// Mint NFT and add an ask
         nftA.mint(userA, 2);
-        vm.startPrank(userA);
+        vm.startPrank(userA, userA);
         nftA.approve(address(nftExchange), 2);
         nftExchange.addAsk(nftA, 2, 50 ether);
 
@@ -129,7 +129,7 @@ contract NftExchangeTest is Test {
     function testAcceptAskWETH() public {
         /// Step 1: userA mints an NFT and places an ask
         nftA.mint(userA, 10);
-        vm.startPrank(userA);
+        vm.startPrank(userA, userA);
         nftA.approve(address(nftExchange), 10);
         nftExchange.addAsk(nftA, 10, 30 ether);
         vm.stopPrank();
@@ -139,7 +139,7 @@ contract NftExchangeTest is Test {
         /// transfer that cost in WETH to the contract. We must ensure userB has enough WETH
         /// or performs a deposit if needed. For simplicity, userB already has WETH.
 
-        vm.startPrank(userB);
+        vm.startPrank(userB, userB);
 
         // userB approves the NftExchange to transfer WETH
         WETH.approve(address(nftExchange), 30 ether);
@@ -162,7 +162,7 @@ contract NftExchangeTest is Test {
     function testAcceptAsk() public {
         /// Step 1: userA mints an NFT and places an ask
         nftA.mint(userA, 20);
-        vm.startPrank(userA);
+        vm.startPrank(userA, userA);
         nftA.approve(address(nftExchange), 20);
         nftExchange.addAsk(nftA, 20, 30 ether);
         vm.stopPrank();
@@ -172,7 +172,7 @@ contract NftExchangeTest is Test {
         /// transfer that cost in WETH to the contract. We must ensure userB has enough WETH
         /// or performs a deposit if needed. For simplicity, userB already has WETH.
 
-        vm.startPrank(userB);
+        vm.startPrank(userB, userB);
 
         // The function signature is: acceptAsk(IERC721 nft, uint256 tokenId, uint256 maxPrice)
         // The ask was 30 ether. We pass a maxPrice of 30 ether or more to prevent reverts.
