@@ -270,7 +270,7 @@ contract NftExchangeV2 is Ownable, Pausable, ReentrancyGuardTransient {
         if (nft.isApprovedForAll(msg.sender, address(this))) {
             if (nft.getApproved(tokenId) != address(this)) {
                 // try to approve
-                nft.setApprovalForAll(address(this), true);
+                nft.approve(address(this), tokenId);
             }
         } else {
             // check approval

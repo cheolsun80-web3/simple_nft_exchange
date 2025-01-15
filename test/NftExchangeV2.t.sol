@@ -190,4 +190,12 @@ contract NftExchangeV2Test is Test {
         uint256 expectedFee = (30 ether * nftExchange.fee()) / nftExchange.FEE_DENOMINATOR();
         assertEq(nftExchange.feeBalance(), expectedFee, "Fee balance mismatch");
     }
+
+    function testAddAskAllApproval() public {
+        nftA.mint(userA, 30);
+        vm.startPrank(userA, userA);
+        nftA.setApprovalForAll(address(nftExchange), true);
+        nftExchange.addAsk(nftA, 30, 30 ether);
+        vm.stopPrank();
+    }
 }
