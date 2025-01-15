@@ -22,8 +22,14 @@ import "./WOVER.sol";
 // import BidLib
 import "./BidLib.sol";
 
-contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
+contract NftExchangeV2 is Ownable, Pausable, ReentrancyGuardTransient {
     using BidLib for BidLib.Heap;
+
+    enum Type {
+        None,
+        Ask,
+        Bid
+    }
 
     struct Ask {
         address seller;
@@ -56,6 +62,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         address buyer;
         uint256 price;
         uint256 bn;
+        Type tradeType;
     }
 
     mapping(IERC721 => TradeInfo[]) public tradeHistory;
@@ -63,7 +70,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
     mapping(address => uint256) public nonces;
     mapping(address => uint256) public balances;
 
-    string public constant name = "NftExchange V1";
+    string public constant name = "ONE V2";
 
     enum BidState {
         None,
@@ -124,6 +131,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
     }
 
     function setExpiration(uint256 _expiration) public onlyOwner {
+        // Notice: Already registered ask's expiration value is not changed
         expiration = _expiration;
         emit ExpirationChanged(expiration);
     }
@@ -173,7 +181,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         }
     }
 
-    function _ask_chk(Ask memory ask) internal returns (bool) {
+    function _ask_chk(Ask memory ask) internal view returns (bool) {
         if (ask.expiration < block.timestamp) {
             return false;
         }
@@ -245,17 +253,29 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
                         _asks[i].seller = address(0);
                         _asks[i].price = DEL;
                         _asks[i].idx = DEL;
+                    } else {
+                        revert("Already listed");
                     }
                     break;
                 }
             }
         }
+
         require(!tokenLocks[nft][tokenId], "Token locked");
-        // check approval
-        require(nft.getApproved(tokenId) == address(this), "Not approved");
 
         // check owner
         require(nft.ownerOf(tokenId) == msg.sender, "Not owner");
+
+        // check approvedforall
+        if (nft.isApprovedForAll(msg.sender, address(this))) {
+            if (nft.getApproved(tokenId) != address(this)) {
+                // try to approve
+                nft.setApprovalForAll(address(this), true);
+            }
+        } else {
+            // check approval
+            require(nft.getApproved(tokenId) == address(this), "Not approved");
+        }
 
         // check max asks
         require((asks[nft].length - asksOffset[nft]) < MAX_ASKS, "Too many asks");
@@ -352,7 +372,14 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
 
         askInfos[ask.seller].push(AskInfo({nft: nft, idx: tokenId, price: price, bn: block.number}));
         tradeHistory[nft].push(
-            TradeInfo({tokenId: tokenId, seller: ask.seller, buyer: msg.sender, price: price, bn: block.number})
+            TradeInfo({
+                tokenId: tokenId,
+                seller: ask.seller,
+                buyer: msg.sender,
+                price: price,
+                bn: block.number,
+                tradeType: Type.Ask
+            })
         );
     }
 
@@ -399,19 +426,7 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
         bidInfos[msg.sender].push(BidInfo({nft: nft, nonce: _nonce, state: BidState.Bid}));
     }
 
-    function removeBidByOwner(IERC721 nft) public onlyWhitelisted(nft) nonReentrant {
-        BidLib.Heap storage _bids = bids[nft];
-        // get top bid
-        (BidLib.Bidder memory bidder, uint256 price) = _bids.extractMax();
-        require(price > 0, "No bid");
-
-        // transfer WETH
-        WETH.withdraw(price);
-        (bool success,) = bidder.bidder.call{value: price, gas: 3333}("");
-        require(success, "Withdraw failed");
-    }
-
-    function removeBidByOwnerN(IERC721 nft, uint256 count) public onlyWhitelisted(nft) nonReentrant {
+    function removeBidByOwnerN(IERC721 nft, uint256 count) public onlyWhitelisted(nft) nonReentrant onlyOwner {
         BidLib.Heap storage _bids = bids[nft];
         for (uint256 i = 0; i < count; i++) {
             // get top bid
@@ -493,7 +508,14 @@ contract NftExchange is Ownable, Pausable, ReentrancyGuardTransient {
 
         askInfos[msg.sender].push(AskInfo({nft: nft, idx: tokenId, price: price, bn: block.number}));
         tradeHistory[nft].push(
-            TradeInfo({tokenId: tokenId, seller: msg.sender, buyer: bidder.bidder, price: price, bn: block.number})
+            TradeInfo({
+                tokenId: tokenId,
+                seller: msg.sender,
+                buyer: bidder.bidder,
+                price: price,
+                bn: block.number,
+                tradeType: Type.Bid
+            })
         );
     }
 
